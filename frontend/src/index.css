@@ -1,0 +1,125 @@
+:root {
+  color: #1c1915;
+  background: #efeae2;
+  font-family: "Segoe UI", sans-serif;
+  line-height: 1.4;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; }
+
+button, input, select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: #1f4e79;
+  color: #fff;
+  border: 0;
+  border-radius: 4px;
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+}
+
+button.secondary { background: #5c564c; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+input, select {
+  background: #fff;
+  border: 1px solid #c9c0b2;
+  border-radius: 4px;
+  padding: 0.35rem 0.45rem;
+  width: 100%;
+}
+
+main {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+header h1 {
+  font-family: "Palatino Linotype", Palatino, serif;
+  font-size: 1.7rem;
+  margin: 0 0 0.25rem;
+}
+
+header p { margin: 0; }
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 460px) minmax(0, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+  align-items: start;
+}
+
+.panel {
+  background: #f7f4ee;
+  border: 1px solid #d9d0c3;
+  border-radius: 8px;
+  padding: 0.8rem;
+}
+
+.panel h2 {
+  font-size: 1rem;
+  margin: 0 0 0.6rem;
+}
+
+.stack { display: grid; gap: 0.55rem; }
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+label.field { display: grid; gap: 0.2rem; font-size: 0.85rem; }
+
+.notes { font-size: 0.88rem; }
+.notes li { margin: 0.25rem 0; }
+
+.parameter {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.2rem;
+  padding: 0.45rem 0;
+  border-top: 1px solid #e4ddd0;
+}
+
+.parameter header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.parameter h3 { font-size: 0.86rem; margin: 0; font-weight: 600; }
+.meta { color: #5c564c; font-size: 0.78rem; }
+.controls { display: grid; grid-template-columns: 1fr auto auto; gap: 0.35rem; }
+.warn { color: #8f2d3c; font-size: 0.78rem; margin: 0; }
+.ok { color: #2f6f4e; }
+
+.chart { width: 100%; height: 460px; }
+.runs { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.run-chip { display: flex; gap: 0.35rem; align-items: center; font-size: 0.85rem; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.error {
+  background: #f8e8e6;
+  border: 1px solid #e3b2ac;
+  padding: 0.5rem;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
+details { margin-top: 0.4rem; }
+summary { cursor: pointer; }
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  .chart { height: 360px; }
+  .row { grid-template-columns: 1fr; }
+}
