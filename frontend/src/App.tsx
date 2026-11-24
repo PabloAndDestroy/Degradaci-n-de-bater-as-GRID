@@ -5,8 +5,12 @@ import type {
   ExperimentInput,
   ExperimentType,
   ModelInfo,
+  OcpPoint,
+  OcpTables,
   ParameterInfo,
+  ParameterPreset,
   ParameterResponse,
+  PresetsResponse,
   RunRecord,
   SavedConfiguration,
   SimulationResult,
@@ -17,6 +21,7 @@ import { constraintMessage, defaultDisplayMode, displayFactor, displayLabel, for
 
 const STORAGE_KEY = "battery-configurations";
 const NOMINAL_CAPACITY_PARAMETER = "Nominal cell capacity [A.h]";
+const EXPERIMENT_OWNED_PARAMETERS = new Set(["Current function [A]", "Initial temperature [K]"]);
 const PRESETS: Array<[string, string, string]> = [
   ["Voltaje vs tiempo", "Time [s]", "Voltage [V]"],
   ["Voltaje vs capacidad", "Discharge capacity [A.h]", "Voltage [V]"],
@@ -35,6 +40,11 @@ const emptyExperiment = (): ExperimentInput => ({
   temperature_K: 298.15,
 });
 
+function defaultCurrent(): Pick<ExperimentInput, "current_mode" | "current_A" | "c_rate" | "temperature_K"> {
+  const { current_mode, current_A, c_rate, temperature_K } = emptyExperiment();
+  return { current_mode, current_A, c_rate, temperature_K };
+}
+
 function loadSaved(): SavedConfiguration[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -51,10 +61,21 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function cloneOcpTables(tables: OcpTables | null | undefined): OcpTables | null {
+  if (!tables) return null;
+  return {
+    negative: (tables.negative ?? []).map((point) => ({ ...point })),
+    positive: (tables.positive ?? []).map((point) => ({ ...point })),
+  };
+}
+
 export default function App() {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelId, setModelId] = useState("sodium_ion");
   const [catalogue, setCatalogue] = useState<ParameterResponse | null>(null);
+  const [presets, setPresets] = useState<ParameterPreset[]>([]);
+  const [selectedPreset, setSelectedPreset] = useState("chayambuka");
+  const [ocpTables, setOcpTables] = useState<OcpTables | null>(null);
   const [variables, setVariables] = useState<VariableInfo[]>([]);
   const [unavailable, setUnavailable] = useState<Array<{ name: string; reason: string }>>([]);
   const [selectedVariables, setSelectedVariables] = useState<string[]>([]);
@@ -80,6 +101,7 @@ export default function App() {
     const selected = models.find((model) => model.id === modelId);
     if (!selected?.implemented) return;
     setDrafts({});
+    setOcpTables(null);
     setError("");
     Promise.all([
       getJson<ParameterResponse>(`/api/models/${modelId}/parameters`),
@@ -98,6 +120,12 @@ export default function App() {
         setDisplayMode(modes);
       })
       .catch((reason) => setError(errorText(reason)));
+    getJson<PresetsResponse>(`/api/models/${modelId}/presets`)
+      .then((data) => setPresets(data.presets))
+      .catch((reason) => {
+        setPresets([]);
+        setError(errorText(reason));
+      });
   }, [modelId, models]);
 
   const parameters = catalogue?.parameters ?? [];
@@ -138,14 +166,23 @@ export default function App() {
     return messages;
   }
 
+  function outgoingOcpTables(): OcpTables | null {
+    if (!ocpTables) return null;
+    if (ocpTables.negative.length === 0 && ocpTables.positive.length === 0) return null;
+    return { negative: ocpTables.negative, positive: ocpTables.positive };
+  }
+
   function buildRequest(label: string): SimulateRequest {
-    return {
+    const request: SimulateRequest = {
       model: modelId,
       label,
       parameters: overrides(),
       experiment,
       variables: selectedVariables,
     };
+    const tables = outgoingOcpTables();
+    if (tables) request.ocp_tables = tables;
+    return request;
   }
 
   async function runRequest(request: SimulateRequest) {
@@ -215,7 +252,15 @@ export default function App() {
   }
 
   function currentConfiguration(name: string): SavedConfiguration {
-    return { name, model: modelId, parameters: overrides(), experiment };
+    const configuration: SavedConfiguration = {
+      name,
+      model: modelId,
+      parameters: overrides(),
+      experiment,
+    };
+    const tables = outgoingOcpTables();
+    if (tables) configuration.ocp_tables = tables;
+    return configuration;
   }
 
   async function onSave() {
@@ -246,7 +291,39 @@ export default function App() {
     }
     setDrafts(next);
     setExperiment(configuration.experiment);
+    setOcpTables(cloneOcpTables(configuration.ocp_tables));
     setError("");
+  }
+
+  function applyPreset(id: string) {
+    setSelectedPreset(id);
+    if (id === "chayambuka") {
+      setDrafts({});
+      setOcpTables(null);
+      setExperiment((current) => ({ ...current, ...defaultCurrent() }));
+      return;
+    }
+    const preset = presets.find((item) => item.id === id);
+    if (!preset) {
+      setOcpTables(null);
+      return;
+    }
+    const next: Record<string, string> = {};
+    for (const [name, value] of Object.entries(preset.overrides ?? {})) {
+      if (EXPERIMENT_OWNED_PARAMETERS.has(name)) continue;
+      next[name] = String(value);
+    }
+    setDrafts(next);
+    setOcpTables(cloneOcpTables(preset.ocp_tables));
+    if (preset.experiment) {
+      const { current_mode, current_A, temperature_K } = preset.experiment;
+      setExperiment((current) => ({
+        ...current,
+        ...(current_mode != null ? { current_mode } : {}),
+        ...(current_A != null ? { current_A } : {}),
+        ...(temperature_K != null ? { temperature_K } : {}),
+      }));
+    }
   }
 
   const nominal = byName.get(NOMINAL_CAPACITY_PARAMETER);
@@ -258,6 +335,7 @@ export default function App() {
   const signedCurrent = experiment.type === "charge" ? -magnitude : magnitude;
   const axisOptions = axisKeys(runs.filter((run) => run.visible));
   const activeModel = models.find((model) => model.id === modelId);
+  const selectedNote = presets.find((preset) => preset.id === selectedPreset)?.note ?? "";
 
   return (
     <main>
@@ -299,18 +377,48 @@ export default function App() {
             Buscar
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="espesor, porosidad, OCP…" />
           </label>
-          <div className="toolbar">
-            <button
-              className="secondary"
-              type="button"
-              onClick={() => {
-                setDrafts({});
-                setExperiment((current) => ({ ...current, temperature_K: 298.15 }));
-              }}
-            >
+          <div className="toolbar" style={{ alignItems: "end" }}>
+            <label className="field">
+              Agregado de parámetros
+              <select
+                data-testid="parameter-preset"
+                value={selectedPreset}
+                onChange={(event) => applyPreset(event.target.value)}
+              >
+                {presets.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="secondary" type="button" onClick={() => applyPreset("chayambuka")}>
               Restaurar parámetros
             </button>
           </div>
+          {selectedNote && <p className="meta">{selectedNote}</p>}
+          {ocpTables && (
+            <div className="ocp-blocks">
+              <OcpTableEditor
+                testId="ocp-negative"
+                title="Ánodo, hard carbon, U_n"
+                electrode="negative"
+                points={ocpTables.negative}
+                onChange={(points) =>
+                  setOcpTables((current) => (current ? { ...current, negative: points } : current))
+                }
+              />
+              <OcpTableEditor
+                testId="ocp-positive"
+                title="Cátodo, NFM, U_p"
+                electrode="positive"
+                points={ocpTables.positive}
+                onChange={(points) =>
+                  setOcpTables((current) => (current ? { ...current, positive: points } : current))
+                }
+              />
+            </div>
+          )}
           {(catalogue?.categories ?? []).map((category) => {
             const rows = parameters.filter((parameter) => {
               if (parameter.category !== category) return false;
@@ -743,5 +851,82 @@ function ParameterRow({
       {parameter.description && <p className="meta">{parameter.description}</p>}
       {message && <p className="warn">{message}</p>}
     </article>
+  );
+}
+
+function parseOcpNumber(text: string): number {
+  const trimmed = text.trim();
+  if (trimmed === "") return Number.NaN;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : Number.NaN;
+}
+
+function nextOcpPoint(points: OcpPoint[]): OcpPoint {
+  const last = points[points.length - 1];
+  if (!last) return { sto: 0, V: 0 };
+  const sto = Number.isFinite(last.sto) ? Math.round((last.sto + 0.05) * 1e6) / 1e6 : Number.NaN;
+  return { sto, V: last.V };
+}
+
+function OcpTableEditor({
+  testId,
+  title,
+  electrode,
+  points,
+  onChange,
+}: {
+  testId: string;
+  title: string;
+  electrode: "negative" | "positive";
+  points: OcpPoint[];
+  onChange: (points: OcpPoint[]) => void;
+}) {
+  function updatePoint(index: number, patch: Partial<OcpPoint>) {
+    onChange(points.map((point, position) => (position === index ? { ...point, ...patch } : point)));
+  }
+
+  return (
+    <section className="ocp-table" data-testid={testId}>
+      <header>
+        <h3>{title}</h3>
+        <span className="meta">ocp_tables.{electrode}</span>
+      </header>
+      <p className="meta">
+        Filas (sto, V) del interpolante lineal. Mínimo 2 puntos con sto creciente;
+        lista vacía = se mantiene el OCP de Chayambuka2022.
+      </p>
+      <div className="ocp-row ocp-head">
+        <span>sto</span>
+        <span>V (V)</span>
+        <span />
+      </div>
+      {points.map((point, index) => (
+        <div className="ocp-row" key={index}>
+          <input
+            aria-label={`sto fila ${index + 1}`}
+            type="number"
+            step="any"
+            value={Number.isFinite(point.sto) ? point.sto : ""}
+            onChange={(event) => updatePoint(index, { sto: parseOcpNumber(event.target.value) })}
+          />
+          <input
+            aria-label={`V fila ${index + 1}`}
+            type="number"
+            step="any"
+            value={Number.isFinite(point.V) ? point.V : ""}
+            onChange={(event) => updatePoint(index, { V: parseOcpNumber(event.target.value) })}
+          />
+          <button type="button" className="secondary" onClick={() => onChange(points.filter((_, position) => position !== index))}>
+            Quitar
+          </button>
+        </div>
+      ))}
+      <div className="toolbar">
+        <button type="button" className="secondary" onClick={() => onChange([...points, nextOcpPoint(points)])}>
+          Agregar fila
+        </button>
+        <span className="meta">{points.length} {points.length === 1 ? "punto" : "puntos"}</span>
+      </div>
+    </section>
   );
 }

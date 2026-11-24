@@ -10,6 +10,37 @@ converjan ni que sean representativas de una celda real.
 Para la descripción del modelo y de las decisiones científicas, véase
 [decisiones_cientificas.md](./decisiones_cientificas.md).
 
+## Agregado EAFIT
+
+El agregado EAFIT aplica overrides numéricos sobre
+`ParameterValues("Chayambuka2022")` y no cambia las ecuaciones de `BasicDFN`.
+Las curvas OCP del agregado EAFIT son las de hard carbon (U_n) y NFM (U_p), no
+la curva NVPF de Chayambuka2022: cuando se envían las tablas `ocp_tables` con la
+simulación, esas curvas sustituyen a las funciones OCP del conjunto base. Las
+demás funciones (difusividad y densidad de intercambio) no se sustituyen. La
+geometría de la celda sigue siendo manual: no se inventa ni se deduce de la
+capacidad nominal.
+
+Sus valores salen de la columna Celda EAFIT de la hoja de parámetros, en las
+filas anteriores a «Datos adicionales»: capacidad nominal 75 A·h, resistencia
+de contacto 0 Ω, temperatura de referencia 298.15 K, temperatura ambiente
+298.15 K, 1 electrodo en paralelo, 1 celda en serie, corte inferior 1.5 V y
+corte superior 3.9 V; el experimento se fija en corriente 24.75 A (modo
+corriente) y temperatura 298.15 K. Esas temperaturas, la resistencia, el
+paralelo y la serie coinciden con Chayambuka2022 y aun así quedan escritas en
+el agregado.
+
+Quedó fuera porque la celda EAFIT estaba vacía o no existe columna EAFIT:
+espesores, altura, ancho, porosidad y Bruggeman del separador, OCV a 0 % y a
+100 % SOC, y todo el bloque de ánodo y cátodo. El área y la geometría siguen
+siendo las de Chayambuka2022: 75 A·h y 24.75 A no reescalan el área, por lo
+que la densidad de corriente no es la de una celda de 75 A·h con electrodos a
+escala.
+
+También quedó fuera: la hoja Art, todo desde «Datos adicionales» hacia abajo,
+la columna sin encabezado (58.9 y 12), las notas 1,97 nm / 5,07 μm cat /
+4,32 μm anod, y los artículos Schneider y Schütte (no son agregados).
+
 ## Qué representa el modelo
 
 - Es un modelo electroquímico DFN isotérmico para la celda de ion sodio del

@@ -51,12 +51,23 @@ export type ExperimentInput = {
   temperature_K: number;
 };
 
+export type OcpPoint = {
+  sto: number;
+  V: number;
+};
+
+export type OcpTables = {
+  negative: OcpPoint[];
+  positive: OcpPoint[];
+};
+
 export type SimulateRequest = {
   model: string;
   label: string;
   parameters: Record<string, number>;
   experiment: ExperimentInput;
   variables: string[];
+  ocp_tables?: OcpTables | null;
 };
 
 export type SimulationResult = {
@@ -87,6 +98,7 @@ export type SavedConfiguration = {
   model: string;
   parameters: Record<string, number>;
   experiment: ExperimentInput;
+  ocp_tables?: OcpTables | null;
 };
 
 export type RunRecord = {
@@ -94,4 +106,25 @@ export type RunRecord = {
   request: SimulateRequest;
   result: SimulationResult;
   visible: boolean;
+};
+
+export type PresetExperiment = {
+  current_mode?: "current" | "c_rate";
+  current_A?: number | null;
+  temperature_K?: number;
+};
+
+export type ParameterPreset = {
+  id: string;
+  label: string;
+  parameter_set: string;
+  overrides: Record<string, number>;
+  experiment: PresetExperiment | null;
+  note?: string;
+  ocp_tables?: OcpTables | null;
+};
+
+export type PresetsResponse = {
+  model: string;
+  presets: ParameterPreset[];
 };

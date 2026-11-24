@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field
 from backend.errors import AppError
 from backend.models.registry import MODELS, get_model_info
 from backend.parameters.catalogue import list_parameters
+from backend.parameters.ocp_tables import validate_ocp_tables
+from backend.parameters.presets import list_presets
 from backend.simulation.runner import simulate, variable_catalogue
 from backend.validation.checks import validate_experiment, validate_overrides
 
@@ -30,6 +32,7 @@ class SimulateIn(BaseModel):
     experiment: ExperimentIn
     variables: list[str] | None = None
     label: str | None = None
+    ocp_tables: dict | None = None
 
 
 class CompareIn(BaseModel):
@@ -40,6 +43,7 @@ class ValidateIn(BaseModel):
     model: str = "sodium_ion"
     parameters: dict[str, Any] = Field(default_factory=dict)
     experiment: ExperimentIn | None = None
+    ocp_tables: dict | None = None
 
 
 class ConfigurationIn(BaseModel):
@@ -47,6 +51,7 @@ class ConfigurationIn(BaseModel):
     model: str = "sodium_ion"
     parameters: dict[str, Any] = Field(default_factory=dict)
     experiment: ExperimentIn
+    ocp_tables: dict | None = None
 
 
 def _check(body: ValidateIn) -> dict:
@@ -58,6 +63,7 @@ def _check(body: ValidateIn) -> dict:
         )
         errors.extend(exp_errors)
         warnings.extend(exp_warnings)
+    errors.extend(validate_ocp_tables(body.ocp_tables))
     return {"valid": not errors, "errors": errors, "warnings": warnings}
 
 
@@ -74,6 +80,11 @@ def get_model(model_id: str):
 @router.get("/models/{model_id}/parameters")
 def get_parameters(model_id: str):
     return list_parameters(model_id)
+
+
+@router.get("/models/{model_id}/presets")
+def get_presets(model_id: str):
+    return {"model": model_id, "presets": list_presets(model_id)}
 
 
 @router.get("/models/{model_id}/variables")
@@ -101,6 +112,7 @@ def post_simulate(body: SimulateIn):
         body.experiment.model_dump(),
         body.variables,
         body.label,
+        ocp_tables=body.ocp_tables,
     )
 
 
@@ -120,6 +132,7 @@ def post_compare(body: CompareIn):
                 case.experiment.model_dump(),
                 case.variables,
                 label,
+                ocp_tables=case.ocp_tables,
             )
         )
     return {"cases": results}

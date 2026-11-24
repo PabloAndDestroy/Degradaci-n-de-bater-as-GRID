@@ -11,6 +11,11 @@ import pybamm
 from backend.errors import AppError
 from backend.models.registry import require_implemented
 from backend.parameters.catalogue import default_parameter_values
+from backend.parameters.ocp_tables import (
+    ELECTRODES,
+    ocp_interpolant,
+    validate_ocp_tables,
+)
 from backend.simulation.outputs import DEFAULT_SERIES, attach_reductions, list_variables
 from backend.validation.checks import validate_experiment, validate_overrides
 
@@ -66,12 +71,13 @@ def _current_symbol(spec: dict):
     return current
 
 
-def prepare(model_id: str, overrides: dict, experiment: dict):
+def prepare(model_id: str, overrides: dict, experiment: dict, ocp_tables=None):
     require_implemented(model_id)
     merged, errors, warnings_out = validate_overrides(overrides or {})
     spec, exp_errors, exp_warnings = validate_experiment(experiment or {}, merged)
     errors.extend(exp_errors)
     warnings_out.extend(exp_warnings)
+    errors.extend(validate_ocp_tables(ocp_tables))
     if errors or spec is None:
         return None, errors, warnings_out
 
@@ -88,6 +94,16 @@ def prepare(model_id: str, overrides: dict, experiment: dict):
             "Current function [A]": _current_symbol(spec),
         }
     )
+
+    ocp_updates = {}
+    if isinstance(ocp_tables, dict):
+        for electrode, key in ELECTRODES.items():
+            points = ocp_tables.get(electrode)
+            if points:
+                ocp_updates[key] = ocp_interpolant(points)
+    if ocp_updates:
+        parameter_values.update(ocp_updates)
+
     return (parameter_values, spec, merged), errors, warnings_out
 
 
@@ -127,8 +143,11 @@ def simulate(
     experiment: dict,
     variables: list[str] | None = None,
     label: str | None = None,
+    ocp_tables=None,
 ) -> dict:
-    prepared, errors, warning_messages = prepare(model_id, overrides, experiment)
+    prepared, errors, warning_messages = prepare(
+        model_id, overrides, experiment, ocp_tables=ocp_tables
+    )
     if prepared is None:
         raise AppError("La configuración no es válida.", status_code=422, details=errors)
 
